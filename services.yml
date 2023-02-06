@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: convert-to-dpfm-orders-from-sap-purchase-order
+  name: convert-to-dpfm-orders-from-sap-purchase-order
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: convert-to-dpfm-orders-from-sap-purchase-order
+      app: ORDERS
+  template:
+    metadata:
+      labels:
+        run: convert-to-dpfm-orders-from-sap-purchase-order
+        app: ORDERS
+    spec:
+      hostname: convert-to-dpfm-orders-from-sap-purchase-order
+      containers:
+        - name: convert-to-dpfm-orders-from-sap-purchase-order
+          image: latonaio/convert-to-dpfm-orders-from-sap-purchase-order
+          imagePullPolicy: Always
+          env:
+            - name: "RMQ_QUEUE_FROM"
+              value: "convert-to-dpfm-orders-from-sap-purchase-order-queue"
+            - name: "RMQ_QUEUE_TO"
+              value: "convert-to-dpfm-orders-from-sap-purchase-order-queue"
+            - name: "RMQ_SESSION_CONTROL_QUEUE"
+              value: "data-platform-api-orders-creates-session-control-queue"
+            - name: "DB_NAME"
+              value: "DataPlatformMastersAndTransactionsMysqlKube"
+          envFrom:
+            - configMapRef:
+                name: env-config
+            - secretRef:
+                name: env-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: convert-to-dpfm-orders-from-sap-purchase-order
+  name: convert-to-dpfm-orders-from-sap-purchase-order
+spec:
+  selector:
+    run: convert-to-dpfm-orders-from-sap-purchase-order
+  type: NodePort
+  ports:
+    - name: api
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+      nodePort: 30748
