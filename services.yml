@@ -9,12 +9,12 @@ spec:
   selector:
     matchLabels:
       run: convert-to-dpfm-orders-from-sap-purchase-order
-      app: FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_SALES_ORDER
+      app: FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_PURCHASE_ORDER
   template:
     metadata:
       labels:
         run: convert-to-dpfm-orders-from-sap-purchase-order
-        app: FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_SALES_ORDER
+        app: FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_PURCHASE_ORDER
     spec:
       hostname: convert-to-dpfm-orders-from-sap-purchase-order
       containers:

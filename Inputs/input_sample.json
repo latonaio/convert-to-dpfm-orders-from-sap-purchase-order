@@ -6,7 +6,7 @@
 	"api_status_code": 200,
 	"runtime_session_id": "",
 	"business_partner": 201,
-	"service_label": "FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_SALES_ORDER",
+	"service_label": "FUNCTION_CONVERT_TO_DPFM_ORDERS_FROM_SAP_PURCHASE_ORDER",
 	"PurchaseOrder": {
 		"PurchaseOrder": "",
 		"CompanyCode": "0001",
