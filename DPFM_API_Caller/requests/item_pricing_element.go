@@ -1,6 +1,6 @@
 package requests
 
-type SAPPurchaseOrderItemPricingElement struct {
+type ItemPricingElement struct {
 	PurchaseOrder               string  `json:"PurchaseOrder"`
 	PurchaseOrderItem           string  `json:"PurchaseOrderItem"`
 	PricingProcedureStep        string  `json:"PricingProcedureStep"`

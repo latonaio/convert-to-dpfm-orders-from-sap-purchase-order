@@ -3,207 +3,243 @@ package dpfm_api_output_formatter
 import (
 	dpfm_api_input_reader "convert-to-dpfm-orders-from-sap-purchase-order/DPFM_API_Input_Reader"
 	dpfm_api_processing_formatter "convert-to-dpfm-orders-from-sap-purchase-order/DPFM_API_Processing_Formatter"
-	"encoding/json"
 )
+
+func OutputFormatter(
+	sdc *dpfm_api_input_reader.SDC,
+	psdc *dpfm_api_processing_formatter.ProcessingFormatterSDC,
+	osdc *Output,
+) error {
+	header := ConvertToHeader(*sdc, *psdc)
+	// item := ConvertToItem(*sdc, *psdc)
+	// itemPricingElement := ConvertToItemPricingElement(*sdc, *psdc)
+	// itemScheduleLine := ConvertToItemScheduleLine(*sdc, *psdc)
+	// address := ConvertToAddress(*sdc, *psdc)
+	// partner := ConvertToPartner(*sdc, *psdc)
+
+	osdc.Message = Message{
+		Header: header,
+		// Item:               item,
+		// ItemPricingElement: itemPricingElement,
+		// ItemScheduleLine:   itemScheduleLine,
+		// Address:            address,
+		// Partner:            partner,
+	}
+
+	return nil
+}
 
 func ConvertToHeader(
 	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*Header, error) {
-	mappingHeader := psdc.MappingHeader
-	codeConversionHeader := psdc.CodeConversionHeader
-	totalNetAmount := psdc.TotalNetAmount
+	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+) *Header {
+	dataProcessingHeader := psdc.Header
+	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
 
-	header := Header{}
-
-	data, err := json.Marshal(mappingHeader)
-	if err != nil {
-		return nil, err
+	header := &Header{
+		OrderID:                   *dataConversionProcessingHeader.ConvertedOrderID,
+		OrderDate:                 dataProcessingHeader.OrderDate,
+		OrderType:                 dataConversionProcessingHeader.ConvertedOrderType,
+		Buyer:                     dataProcessingHeader.Buyer,
+		Seller:                    dataConversionProcessingHeader.ConvertedSeller,
+		BillToParty:               dataProcessingHeader.BillToParty,
+		BillToCountry:             dataProcessingHeader.BillToCountry,
+		Payer:                     dataProcessingHeader.Payer,
+		CreationDate:              dataProcessingHeader.CreationDate,
+		LastChangeDate:            dataProcessingHeader.LastChangeDate,
+		OrderValidityStartDate:    dataProcessingHeader.OrderValidityStartDate,
+		OrderValidityEndDate:      dataProcessingHeader.OrderValidityEndDate,
+		TransactionCurrency:       dataProcessingHeader.TransactionCurrency,
+		PricingDate:               dataProcessingHeader.PricingDate,
+		PriceDetnExchangeRate:     dataProcessingHeader.PriceDetnExchangeRate,
+		Incoterms:                 dataProcessingHeader.Incoterms,
+		PaymentTerms:              dataProcessingHeader.PaymentTerms,
+		AccountingExchangeRate:    dataProcessingHeader.AccountingExchangeRate,
+		HeaderBlockStatus:         dataProcessingHeader.HeaderBlockStatus,
+		HeaderBillingBlockStatus:  dataProcessingHeader.HeaderBillingBlockStatus,
+		HeaderDeliveryBlockStatus: dataProcessingHeader.HeaderDeliveryBlockStatus,
+		IsCancelled:               dataProcessingHeader.IsCancelled,
+		IsDeleted:                 dataProcessingHeader.IsDeleted,
 	}
-	err = json.Unmarshal(data, &header)
-	if err != nil {
-		return nil, err
-	}
 
-	header.OrderID = codeConversionHeader.OrderID
-	header.OrderType = codeConversionHeader.OrderType
-	header.Seller = codeConversionHeader.Seller
-	header.TotalNetAmount = totalNetAmount.TotalNetAmount
-
-	return &header, nil
+	return header
 }
 
-func ConvertToItem(
-	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*[]Item, error) {
-	var items []Item
-	mappingItem := psdc.MappingItem
-	codeConversionItem := psdc.CodeConversionItem
-	conversionData := psdc.ConversionData
+// func ConvertToItem(
+// 	sdc dpfm_api_input_reader.SDC,
+// 	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+// ) []*Item {
+// 	dataProcessingItem := psdc.Item
+// 	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
+// 	dataConversionProcessingItem := psdc.ConversionProcessingItem
 
-	for i := range *mappingItem {
-		item := Item{}
+// 	items := make([]*Item, 0)
+// 	for i := range dataProcessingItem {
+// 		item := &Item{
+// 			OrderID:                                 *dataConversionProcessingHeader.ConvertedOrderID,
+// 			OrderItem:                               *dataConversionProcessingItem[i].ConvertedOrderItem,
+// 			OrderItemCategory:                       dataConversionProcessingItem[i].ConvertedOrderItemCategory,
+// 			OrderItemTextBySeller:                   dataProcessingItem[i].OrderItemTextBySeller,
+// 			Product:                                 dataConversionProcessingItem[i].ConvertedProduct,
+// 			ProductGroup:                            dataConversionProcessingItem[i].ConvertedProductGroup,
+// 			BaseUnit:                                dataProcessingItem[i].BaseUnit,
+// 			PricingDate:                             dataProcessingItem[i].PricingDate,
+// 			PriceDetnExchangeRate:                   dataProcessingItem[i].PriceDetnExchangeRate,
+// 			RequestedDeliveryDate:                   dataProcessingItem[i].RequestedDeliveryDate,
+// 			DeliverToParty:                          dataConversionProcessingItem[i].ConvertedDeliverToParty,
+// 			DeliverFromParty:                        dataProcessingItem[i].DeliverFromParty,
+// 			CreationDate:                            dataProcessingItem[i].CreationDate,
+// 			LastChangeDate:                          dataProcessingItem[i].LastChangeDate,
+// 			DeliverFromPlant:                        dataProcessingItem[i].DeliverFromPlant,
+// 			DeliverFromPlantStorageLocation:         dataProcessingItem[i].DeliverFromPlantStorageLocation,
+// 			DeliveryUnit:                            dataProcessingItem[i].DeliveryUnit,
+// 			StockConfirmationBusinessPartner:        dataProcessingItem[i].StockConfirmationBusinessPartner,
+// 			StockConfirmationPlant:                  dataProcessingItem[i].StockConfirmationPlant,
+// 			StockConfirmationPlantBatch:             dataProcessingItem[i].StockConfirmationPlantBatch,
+// 			OrderQuantityInDeliveryUnit:             dataProcessingItem[i].OrderQuantityInDeliveryUnit,
+// 			ConfirmedOrderQuantityInBaseUnit:        dataProcessingItem[i].ConfirmedOrderQuantityInBaseUnit,
+// 			ItemWeightUnit:                          dataProcessingItem[i].ItemWeightUnit,
+// 			ItemGrossWeight:                         dataProcessingItem[i].ItemGrossWeight,
+// 			ItemNetWeight:                           dataProcessingItem[i].ItemNetWeight,
+// 			NetAmount:                               dataProcessingItem[i].NetAmount,
+// 			TaxAmount:                               dataProcessingItem[i].TaxAmount,
+// 			GrossAmount:                             dataProcessingItem[i].GrossAmount,
+// 			InvoiceDocumentDate:                     dataProcessingItem[i].InvoiceDocumentDate,
+// 			ProductionPlantBusinessPartner:          dataProcessingItem[i].ProductionPlantBusinessPartner,
+// 			ProductionPlant:                         dataProcessingItem[i].ProductionPlant,
+// 			Incoterms:                               dataProcessingItem[i].Incoterms,
+// 			TransactionTaxClassification:            dataProcessingItem[i].TransactionTaxClassification,
+// 			ProductTaxClassificationBillToCountry:   dataProcessingItem[i].ProductTaxClassificationBillToCountry,
+// 			ProductTaxClassificationBillFromCountry: dataProcessingItem[i].ProductTaxClassificationBillFromCountry,
+// 			AccountAssignmentGroup:                  dataProcessingItem[i].AccountAssignmentGroup,
+// 			ProductAccountAssignmentGroup:           dataProcessingItem[i].ProductAccountAssignmentGroup,
+// 			PaymentTerms:                            dataProcessingItem[i].PaymentTerms,
+// 			TaxCode:                                 dataProcessingItem[i].TaxCode,
+// 			ItemBlockStatus:                         dataProcessingItem[i].ItemBlockStatus,
+// 			ItemDeliveryBlockStatus:                 dataProcessingItem[i].ItemDeliveryBlockStatus,
+// 			ItemBillingBlockStatus:                  dataProcessingItem[i].ItemBillingBlockStatus,
+// 			IsCancelled:                             dataProcessingItem[i].IsCancelled,
+// 			IsDeleted:                               dataProcessingItem[i].IsDeleted,
+// 		}
 
-		data, err := json.Marshal((*mappingItem)[i])
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(data, &item)
-		if err != nil {
-			return nil, err
-		}
+// 		items = append(items, item)
+// 	}
 
-		for _, v := range *conversionData {
-			if v.PurchaseOrder == (*mappingItem)[i].PurchaseOrder {
-				item.OrderID = v.OrderID
-				break
-			}
-		}
-		item.OrderItem = (*codeConversionItem)[i].OrderItem
-		item.OrderItemCategory = (*codeConversionItem)[i].OrderItemCategory
-		item.Product = (*codeConversionItem)[i].Product
-		item.ProductGroup = (*codeConversionItem)[i].ProductGroup
+// 	return items
+// }
 
-		items = append(items, item)
-	}
+// func ConvertToItemPricingElement(
+// 	sdc dpfm_api_input_reader.SDC,
+// 	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+// ) []*ItemPricingElement {
+// 	dataProcessingItemPricingElement := psdc.ItemPricingElement
+// 	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
+// 	dataConversionProcessingItem := psdc.ConversionProcessingItem
+// 	dataConversionProcessingItemPricingElement := psdc.ConversionProcessingItemPricingElement
 
-	return &items, nil
-}
+// 	dataConversionProcessingItemMap := make(map[string]*dpfm_api_processing_formatter.ConversionProcessingItem, len(dataConversionProcessingItem))
+// 	for _, v := range dataConversionProcessingItem {
+// 		dataConversionProcessingItemMap[*v.ConvertingOrderItem] = v
+// 	}
 
-func ConvertToItemPricingElement(
-	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*[]ItemPricingElement, error) {
-	var itemPricingElements []ItemPricingElement
-	mappingItemPricingElement := psdc.MappingItemPricingElement
-	codeConversionItemPricingElement := psdc.CodeConversionItemPricingElement
-	conditionType := psdc.SetConditionType
-	conversionData := psdc.ConversionData
+// 	itemPricingElements := make([]*ItemPricingElement, 0)
+// 	for i, v := range dataProcessingItemPricingElement {
+// 		if _, ok := dataConversionProcessingItemMap[v.ConvertingOrderItem]; !ok {
+// 			continue
+// 		}
 
-	for i := range *mappingItemPricingElement {
-		itemPricingElement := ItemPricingElement{}
+// 		itemPricingElements = append(itemPricingElements, &ItemPricingElement{
+// 			OrderID:                    *dataConversionProcessingHeader.ConvertedOrderID,
+// 			OrderItem:                  *dataConversionProcessingItemMap[v.ConvertingOrderItem].ConvertedOrderItem,
+// 			Buyer:                      *dataConversionProcessingHeader.ConvertedBuyer,
+// 			Seller:                     *dataProcessingItemPricingElement[i].Seller,
+// 			ConditionRecord:            dataConversionProcessingItemPricingElement[i].ConvertedConditionRecord,
+// 			ConditionSequentialNumber:  dataConversionProcessingItemPricingElement[i].ConvertedConditionSequentialNumber,
+// 			PricingDate:                dataProcessingItemPricingElement[i].PricingDate,
+// 			ConditionRateValue:         dataProcessingItemPricingElement[i].ConditionRateValue,
+// 			ConditionCurrency:          dataProcessingItemPricingElement[i].ConditionCurrency,
+// 			ConditionQuantity:          dataProcessingItemPricingElement[i].ConditionQuantity,
+// 			ConditionQuantityUnit:      dataProcessingItemPricingElement[i].ConditionQuantityUnit,
+// 			TaxCode:                    dataProcessingItemPricingElement[i].TaxCode,
+// 			ConditionAmount:            dataProcessingItemPricingElement[i].ConditionAmount,
+// 			TransactionCurrency:        dataProcessingItemPricingElement[i].TransactionCurrency,
+// 			ConditionIsManuallyChanged: dataProcessingItemPricingElement[i].ConditionIsManuallyChanged,
+// 		})
+// 	}
 
-		data, err := json.Marshal((*mappingItemPricingElement)[i])
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(data, &itemPricingElement)
-		if err != nil {
-			return nil, err
-		}
+// 	return itemPricingElements
+// }
 
-		for _, v := range *conversionData {
-			if v.PurchaseOrder == (*mappingItemPricingElement)[i].PurchaseOrder && v.PurchaseOrderItem == (*mappingItemPricingElement)[i].PurchaseOrderItem {
-				itemPricingElement.OrderID = v.OrderID
-				itemPricingElement.OrderItem = v.OrderItem
-				// itemPricingElement.SupplyChainRelationshipID = v.SupplyChainRelationshipID
-				break
-			}
-		}
-		itemPricingElement.PricingProcedureCounter = *(*codeConversionItemPricingElement)[i].PricingProcedureCounter
-		itemPricingElement.ConditionType = (*conditionType)[i].ConditionType
+// func ConvertToItemScheduleLine(
+// 	sdc dpfm_api_input_reader.SDC,
+// 	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+// ) []*ItemScheduleLine {
+// 	dataProcessingItemScheduleLine := psdc.ItemScheduleLine
+// 	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
+// 	dataConversionProcessingItem := psdc.ConversionProcessingItem
+// 	dataConversionProcessingItemScheduleLine := psdc.ConversionProcessingItemScheduleLine
 
-		itemPricingElements = append(itemPricingElements, itemPricingElement)
-	}
+// 	dataConversionProcessingItemMap := make(map[string]*dpfm_api_processing_formatter.ConversionProcessingItem, len(dataConversionProcessingItem))
+// 	for _, v := range dataConversionProcessingItem {
+// 		dataConversionProcessingItemMap[*v.ConvertingOrderItem] = v
+// 	}
 
-	return &itemPricingElements, nil
-}
+// 	itemScheduleLines := make([]*ItemScheduleLine, 0)
+// 	for i, v := range dataProcessingItemScheduleLine {
+// 		if _, ok := dataConversionProcessingItemMap[v.ConvertingOrderItem]; !ok {
+// 			continue
+// 		}
 
-func ConvertToItemScheduleLine(
-	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*[]ItemScheduleLine, error) {
-	var itemScheduleLines []ItemScheduleLine
-	mappingItemScheduleLine := psdc.MappingItemScheduleLine
-	codeConversionItemScheduleLine := psdc.CodeConversionItemScheduleLine
-	conversionData := psdc.ConversionData
+// 		itemScheduleLines = append(itemScheduleLines, &ItemScheduleLine{
+// 			OrderID:                               *dataConversionProcessingHeader.ConvertedOrderID,
+// 			OrderItem:                             *dataConversionProcessingItemMap[v.ConvertingOrderItem].ConvertedOrderItem,
+// 			ScheduleLine:                          *dataConversionProcessingItemScheduleLine[i].ConvertedScheduleLine,
+// 			Product:                               dataConversionProcessingItem[i].ConvertedProduct,
+// 			StockConfirmationBussinessPartner:     dataProcessingItemScheduleLine[i].StockConfirmationBussinessPartner,
+// 			StockConfirmationPlant:                dataProcessingItemScheduleLine[i].StockConfirmationPlant,
+// 			StockConfirmationPlantBatch:           dataProcessingItemScheduleLine[i].StockConfirmationPlantBatch,
+// 			RequestedDeliveryDate:                 dataProcessingItemScheduleLine[i].RequestedDeliveryDate,
+// 			ConfirmedDeliveryDate:                 dataProcessingItemScheduleLine[i].ConfirmedDeliveryDate,
+// 			OrderQuantityInBaseUnit:               dataProcessingItemScheduleLine[i].OrderQuantityInBaseUnit,
+// 			ConfirmedOrderQuantityByPDTAvailCheck: dataProcessingItemScheduleLine[i].ConfirmedOrderQuantityByPDTAvailCheck,
+// 			DeliveredQuantityInBaseUnit:           dataProcessingItemScheduleLine[i].DeliveredQuantityInBaseUnit,
+// 			OpenConfirmedQuantityInBaseUnit:       dataProcessingItemScheduleLine[i].OpenConfirmedQuantityInBaseUnit,
+// 		})
+// 	}
+// 	return itemScheduleLines
+// }
 
-	for i := range *mappingItemScheduleLine {
-		itemScheduleLine := ItemScheduleLine{}
+// func ConvertToAddress(
+// 	sdc dpfm_api_input_reader.SDC,
+// 	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+// ) []*Address {
+// 	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
 
-		data, err := json.Marshal((*mappingItemScheduleLine)[i])
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(data, &itemScheduleLine)
-		if err != nil {
-			return nil, err
-		}
+// 	addresses := make([]*Address, 0)
+// 	addresses = append(addresses, &Address{
+// 		OrderID: *dataConversionProcessingHeader.ConvertedOrderID,
+// 	})
 
-		for _, v := range *conversionData {
-			if v.PurchaseOrder == (*mappingItemScheduleLine)[i].PurchaseOrder && v.PurchaseOrderItem == (*mappingItemScheduleLine)[i].PurchaseOrderItem {
-				itemScheduleLine.OrderID = v.OrderID
-				itemScheduleLine.OrderItem = v.OrderItem
-				itemScheduleLine.Product = v.Product
-				break
-			}
-		}
-		itemScheduleLine.ScheduleLine = (*codeConversionItemScheduleLine)[i].ScheduleLine
+// 	return addresses
+// }
 
-		itemScheduleLines = append(itemScheduleLines, itemScheduleLine)
-	}
+// func ConvertToPartner(
+// 	sdc dpfm_api_input_reader.SDC,
+// 	psdc dpfm_api_processing_formatter.ProcessingFormatterSDC,
+// ) []*Partner {
+// 	dataProcessingPartner := psdc.Partner
+// 	dataConversionProcessingHeader := psdc.ConversionProcessingHeader
+// 	dataConversionProcessingPartner := psdc.ConversionProcessingPartner
 
-	return &itemScheduleLines, nil
-}
+// 	partners := make([]*Partner, 0)
+// 	for i := range dataProcessingPartner {
+// 		partners = append(partners, &Partner{
+// 			OrderID:            *dataConversionProcessingHeader.ConvertedOrderID,
+// 			PartnerFunction:    *dataConversionProcessingPartner[i].ConvertedPartnerFunction,
+// 			BusinessPartner:    *dataConversionProcessingPartner[i].ConvertedBusinessPartner,
+// 			ExternalDocumentID: dataProcessingPartner[i].ExternalDocumentID,
+// 		})
+// 	}
 
-func ConvertToAddress(
-	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*Address, error) {
-	mappingAddress := psdc.MappingAddress
-	conversionData := psdc.ConversionData
-
-	address := Address{}
-
-	data, err := json.Marshal(mappingAddress)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(data, &address)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, v := range *conversionData {
-		if v.PurchaseOrder == mappingAddress.PurchaseOrder {
-			address.OrderID = v.OrderID
-			break
-		}
-	}
-
-	return &address, nil
-}
-
-func ConvertToPartner(
-	sdc dpfm_api_input_reader.SDC,
-	psdc dpfm_api_processing_formatter.SDC,
-) (*[]Partner, error) {
-	var partners []Partner
-	mappingPartner := psdc.MappingPartner
-	conversionData := psdc.ConversionData
-
-	for i := range *mappingPartner {
-		partner := Partner{}
-
-		data, err := json.Marshal((*mappingPartner)[i])
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(data, &partner)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, v := range *conversionData {
-			if v.PurchaseOrder == (*mappingPartner)[i].PurchaseOrder {
-				partner.OrderID = v.OrderID
-				break
-			}
-		}
-
-		partners = append(partners, partner)
-	}
-
-	return &partners, nil
-}
+// 	return partners
+// }

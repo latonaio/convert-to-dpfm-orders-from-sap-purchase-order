@@ -4,9 +4,9 @@ import (
 	"convert-to-dpfm-orders-from-sap-purchase-order/DPFM_API_Caller/requests"
 )
 
-func (sdc *SDC) ConvertToHeader() *requests.SAPPurchaseOrderHeader {
-	data := sdc.SAPPurchaseOrderHeader
-	return &requests.SAPPurchaseOrderHeader{
+func (sdc *SDC) ConvertToHeader() *requests.Header {
+	data := sdc.Header
+	return &requests.Header{
 		PurchaseOrder:               data.PurchaseOrder,
 		CompanyCode:                 data.CompanyCode,
 		PurchaseOrderType:           data.PurchaseOrderType,
@@ -39,11 +39,11 @@ func (sdc *SDC) ConvertToHeader() *requests.SAPPurchaseOrderHeader {
 	}
 }
 
-func (sdc *SDC) ConvertToItem(num int) *requests.SAPPurchaseOrderItem {
-	dataPurchaseOrder := sdc.SAPPurchaseOrderHeader
-	data := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem[num]
+func (sdc *SDC) ConvertToItem(num int) *requests.Item {
+	dataPurchaseOrder := sdc.Header
+	data := sdc.Header.Item[num]
 
-	return &requests.SAPPurchaseOrderItem{
+	return &requests.Item{
 		PurchaseOrder:                  dataPurchaseOrder.PurchaseOrder,
 		PurchaseOrderItem:              data.PurchaseOrderItem,
 		PurchaseOrderItemText:          data.PurchaseOrderItemText,
@@ -91,11 +91,11 @@ func (sdc *SDC) ConvertToItem(num int) *requests.SAPPurchaseOrderItem {
 	}
 }
 
-func (sdc *SDC) ConvertToItemAccount(num int) *requests.SAPPurchaseOrderItemAccount {
-	dataPurchaseOrder := sdc.SAPPurchaseOrderHeader
-	dataItem := dataPurchaseOrder.SAPPurchaseOrderItem[num]
-	data := dataItem.SAPPurchaseOrderItemAccount[num]
-	return &requests.SAPPurchaseOrderItemAccount{
+func (sdc *SDC) ConvertToItemAccount(num int) *requests.ItemAccount {
+	dataPurchaseOrder := sdc.Header
+	dataItem := dataPurchaseOrder.Item[num]
+	data := dataItem.ItemAccount[num]
+	return &requests.ItemAccount{
 		PurchaseOrder:           data.PurchaseOrder,
 		PurchaseOrderItem:       data.PurchaseOrderItem,
 		AccountAssignmentNumber: data.AccountAssignmentNumber,
@@ -122,11 +122,11 @@ func (sdc *SDC) ConvertToItemAccount(num int) *requests.SAPPurchaseOrderItemAcco
 	}
 }
 
-func (sdc *SDC) ConvertToItemPricingElement(num int) *requests.SAPPurchaseOrderItemPricingElement {
-	dataPurchaseOrder := sdc.SAPPurchaseOrderHeader
-	dataItem := dataPurchaseOrder.SAPPurchaseOrderItem[num]
-	data := dataItem.SAPPurchaseOrderItemPricingElement[num]
-	return &requests.SAPPurchaseOrderItemPricingElement{
+func (sdc *SDC) ConvertToItemPricingElement(num int) *requests.ItemPricingElement {
+	dataPurchaseOrder := sdc.Header
+	dataItem := dataPurchaseOrder.Item[num]
+	data := dataItem.ItemPricingElement[num]
+	return &requests.ItemPricingElement{
 		PurchaseOrder:               dataPurchaseOrder.PurchaseOrder,
 		PurchaseOrderItem:           dataItem.PurchaseOrderItem,
 		PricingProcedureStep:        data.PricingProcedureStep,
@@ -162,11 +162,11 @@ func (sdc *SDC) ConvertToItemPricingElement(num int) *requests.SAPPurchaseOrderI
 	}
 }
 
-func (sdc *SDC) ConvertToItemScheduleLine(num int) *requests.SAPPurchaseOrderItemScheduleLine {
-	dataPurchaseOrder := sdc.SAPPurchaseOrderHeader
-	dataItem := dataPurchaseOrder.SAPPurchaseOrderItem[num]
-	data := dataItem.SAPPurchaseOrderItemScheduleLine[num]
-	return &requests.SAPPurchaseOrderItemScheduleLine{
+func (sdc *SDC) ConvertToItemScheduleLine(num int) *requests.ItemScheduleLine {
+	dataPurchaseOrder := sdc.Header
+	dataItem := dataPurchaseOrder.Item[num]
+	data := dataItem.ItemScheduleLine[num]
+	return &requests.ItemScheduleLine{
 		PurchasingDocument:            dataPurchaseOrder.PurchaseOrder,
 		PurchasingDocumentItem:        dataItem.PurchaseOrderItem,
 		ScheduleLine:                  data.ScheduleLine,

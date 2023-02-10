@@ -1,6 +1,6 @@
 package requests
 
-type SAPPurchaseOrderHeader struct {
+type Header struct {
 	PurchaseOrder               string  `json:"PurchaseOrder"`
 	CompanyCode                 *string `json:"CompanyCode"`
 	PurchaseOrderType           *string `json:"PurchaseOrderType"`

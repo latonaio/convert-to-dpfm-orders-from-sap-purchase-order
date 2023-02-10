@@ -1,6 +1,6 @@
 # convert-to-dpfm-orders-from-sap-purchase-order
 
-convert-to-dpfm-orders-from-sap-purchase-order は、周辺業務システム　を データ連携基盤 と統合することを目的に、SAP 受注データを データ連携基盤 オーダーデータに変換するマイクロサービスです。  
+convert-to-dpfm-orders-from-sap-purchase-order は、周辺業務システム　を データ連携基盤 と統合することを目的に、SAP 発注データを データ連携基盤 オーダーデータに変換するマイクロサービスです。  
 https://xxx.xxx.io/api/FUNCTION_ORDERS_SRV/creates/
 
 ## 動作環境
@@ -108,7 +108,7 @@ func (c *DPFMAPICaller) AsyncOrderCreates(
 
 ## Output  
 本マイクロサービスでは、[golang-logging-library-for-data-platform](https://github.com/latonaio/golang-logging-library-for-data-platform) により、以下のようなデータがJSON形式で出力されます。  
-以下の sample.json の例は SAP 受注データが データ連携基盤 オーダーデータ に変換された結果の JSON の例です。  
+以下の sample.json の例は SAP 発注データが データ連携基盤 オーダーデータ に変換された結果の JSON の例です。  
 以下の項目のうち、"OrderID" ～ "HeaderText" は、/DPFM_API_Output_Formatter/type.go 内 の Type Header {} による出力結果です。"cursor" ～ "time"は、golang-logging-library-for-data-platform による 定型フォーマットの出力結果です。  
 
 ```

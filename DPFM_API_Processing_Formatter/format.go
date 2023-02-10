@@ -1,494 +1,593 @@
 package dpfm_api_processing_formatter
 
 import (
+	"context"
 	"convert-to-dpfm-orders-from-sap-purchase-order/DPFM_API_Caller/requests"
 	dpfm_api_input_reader "convert-to-dpfm-orders-from-sap-purchase-order/DPFM_API_Input_Reader"
-	"database/sql"
-	"fmt"
-	"strconv"
+	"sync"
+
+	"github.com/latonaio/golang-logging-library-for-data-platform/logger"
+	database "github.com/latonaio/golang-mysql-network-connector"
+	"golang.org/x/xerrors"
 )
 
-// データ連携基盤とSAP Purchase Orderとの項目マッピング
-// Header
-func (psdc *SDC) ConvertToMappingHeader(sdc *dpfm_api_input_reader.SDC) (*MappingHeader, error) {
-	var res MappingHeader
-	dataHeader := sdc.SAPPurchaseOrderHeader
-	dataHeaderItem := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem
-
-	systemDate := GetSystemDatePtr()
-
-	for _, dataHeaderItem := range dataHeaderItem {
-		dataHeaderItemPricingElement := dataHeaderItem.SAPPurchaseOrderItemPricingElement
-		for _, dataHeaderItemPricingElement := range dataHeaderItemPricingElement {
-
-			priceDetnExchangeRate, err := ParseFloat32Ptr(dataHeaderItemPricingElement.PriceDetnExchangeRate)
-			if err != nil {
-				return nil, err
-			}
-			exchangeRate, err := ParseFloat32Ptr(dataHeader.ExchangeRate)
-			if err != nil {
-				return nil, err
-			}
-
-			res = MappingHeader{
-				OrderDate:              dataHeader.PurchaseOrderDate,
-				Buyer:                  sdc.BusinessPartnerID,
-				BillToParty:            sdc.BusinessPartnerID,
-				Payer:                  sdc.BusinessPartnerID,
-				BillToCountry:          dataHeader.AddressCountry,
-				CreationDate:           systemDate,
-				LastChangeDate:         systemDate,
-				OrderValidityStartDate: dataHeader.ValidityStartDate,
-				OrderValidityEndDate:   dataHeader.ValidityEndDate,
-				TransactionCurrency:    dataHeader.DocumentCurrency,
-				PricingDate:            dataHeaderItemPricingElement.PricingDateTime,
-				PriceDetnExchangeRate:  priceDetnExchangeRate,
-				Incoterms:              dataHeader.IncotermsClassification,
-				PaymentTerms:           dataHeader.PaymentTerms,
-				AccountingExchangeRate: exchangeRate,
-			}
-		}
-	}
-
-	return &res, nil
+type ProcessingFormatter struct {
+	ctx context.Context
+	db  *database.Mysql
+	l   *logger.Logger
 }
 
-// Item
-func (psdc *SDC) ConvertToMappingItem(sdc *dpfm_api_input_reader.SDC) (*[]MappingItem, error) {
-	var res []MappingItem
-	dataHeader := sdc.SAPPurchaseOrderHeader
-	dataItem := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem
-
-	systemDate := GetSystemDatePtr()
-
-	for _, dataItem := range dataItem {
-		dataItemPricingElement := dataItem.SAPPurchaseOrderItemPricingElement
-		for _, dataItemPricingElement := range dataItemPricingElement {
-
-			priceDetnExchangeRate, err := ParseFloat32Ptr(dataItemPricingElement.PriceDetnExchangeRate)
-			if err != nil {
-				return nil, err
-			}
-			orderQuantity, err := ParseFloat32Ptr(dataItem.OrderQuantity)
-			if err != nil {
-				return nil, err
-			}
-			itemNetWeight, err := ParseFloat32Ptr(dataItem.ItemNetWeight)
-			if err != nil {
-				return nil, err
-			}
-			netPriceAmount, err := ParseFloat32Ptr(dataItem.NetPriceAmount)
-			if err != nil {
-				return nil, err
-			}
-			exchangeRate, err := ParseFloat32Ptr(dataHeader.ExchangeRate)
-			if err != nil {
-				return nil, err
-			}
-
-			res = append(res, MappingItem{
-				PurchaseOrder:                    dataHeader.PurchaseOrder,
-				OrderItemTextByBuyer:             dataItem.PurchaseOrderItemText,
-				BaseUnit:                         dataItem.PurchaseOrderQuantityUnit,
-				PriceDetnExchangeRate:            priceDetnExchangeRate,
-				DeliverToParty:                   sdc.BusinessPartnerID,
-				CreationDate:                     systemDate,
-				LastChangeDate:                   systemDate,
-				DeliverToPlant:                   dataItem.Plant,
-				DeliverToPlantStorageLocation:    dataItem.StorageLocation,
-				DeliverFromPlant:                 dataHeader.SupplyingPlant,
-				DeliveryUnit:                     dataItem.PurchaseOrderQuantityUnit,
-				StockConfirmationBusinessPartner: sdc.BusinessPartnerID,
-				StockConfirmationPlant:           dataItem.Plant,
-				OrderQuantityInBaseUnit:          orderQuantity,
-				ItemWeightUnit:                   dataItem.ItemWeightUnit,
-				ItemNetWeight:                    itemNetWeight,
-				NetAmount:                        netPriceAmount,
-				ProductionPlantBusinessPartner:   sdc.BusinessPartnerID,
-				ProductionPlant:                  dataHeader.SupplyingPlant,
-				ProductionPlantStorageLocation:   dataItem.StorageLocation,
-				Incoterms:                        dataHeader.IncotermsClassification,
-				PaymentTerms:                     dataHeader.PaymentTerms,
-				AccountingExchangeRate:           exchangeRate,
-				TaxCode:                          dataItem.TaxCode,
-			})
-		}
+func NewProcessingFormatter(ctx context.Context, db *database.Mysql, l *logger.Logger) *ProcessingFormatter {
+	return &ProcessingFormatter{
+		ctx: ctx,
+		db:  db,
+		l:   l,
 	}
-
-	return &res, nil
 }
 
-// ItemPricingElement
-func (psdc *SDC) ConvertToMappingItemPricingElement(sdc *dpfm_api_input_reader.SDC) (*[]MappingItemPricingElement, error) {
-	var res []MappingItemPricingElement
-	dataHeader := sdc.SAPPurchaseOrderHeader
-	dataItem := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem
-
-	for _, dataItem := range dataItem {
-		dataItemPricingElement := dataItem.SAPPurchaseOrderItemPricingElement
-		for _, dataItemPricingElement := range dataItemPricingElement {
-			conditionRateValue, err := ParseFloat32Ptr(dataItemPricingElement.ConditionRateValue)
-			if err != nil {
-				return nil, err
-			}
-			conditionQuantity, err := ParseFloat32Ptr(dataItemPricingElement.ConditionQuantity)
-			if err != nil {
-				return nil, err
-			}
-			conditionAmount, err := ParseFloat32Ptr(dataItemPricingElement.ConditionAmount)
-			if err != nil {
-				return nil, err
-			}
-
-			res = append(res, MappingItemPricingElement{
-				PurchaseOrder:         dataHeader.PurchaseOrder,
-				PurchaseOrderItem:     dataItem.PurchaseOrderItem,
-				ConditionRateValue:    conditionRateValue,
-				ConditionCurrency:     dataItemPricingElement.ConditionCurrency,
-				ConditionQuantity:     conditionQuantity,
-				ConditionQuantityUnit: dataItemPricingElement.ConditionQuantityUnit,
-				TaxCode:               dataItem.TaxCode,
-				ConditionAmount:       conditionAmount,
-				TransactionCurrency:   dataItemPricingElement.TransactionCurrency,
-			})
-		}
-	}
-
-	return &res, nil
-}
-
-func (psdc *SDC) ConvertToMappingItemScheduleLine(sdc *dpfm_api_input_reader.SDC) (*[]MappingItemScheduleLine, error) {
-	var res []MappingItemScheduleLine
-	dataHeader := sdc.SAPPurchaseOrderHeader
-	dataItem := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem
-
-	for _, dataItem := range dataItem {
-		dataItemScheduleLine := dataItem.SAPPurchaseOrderItemScheduleLine
-		for _, dataItemScheduleLine := range dataItemScheduleLine {
-			scheduleLineOrderQuantity, err := ParseFloat32Ptr(dataItemScheduleLine.ScheduleLineOrderQuantity)
-			if err != nil {
-				return nil, err
-			}
-			scheduleLineCommittedQuantity, err := ParseFloat32Ptr(dataItemScheduleLine.ScheduleLineCommittedQuantity)
-			if err != nil {
-				return nil, err
-			}
-
-			res = append(res, MappingItemScheduleLine{
-				PurchaseOrder:                     dataHeader.PurchaseOrder,
-				PurchaseOrderItem:                 dataItem.PurchaseOrderItem,
-				Material:                          *dataItem.Material,
-				StockConfirmationBussinessPartner: sdc.BusinessPartnerID,
-				StockConfirmationPlant:            dataItem.Plant,
-				RequestedDeliveryDate:             dataItemScheduleLine.ScheduleLineDeliveryDate,
-				OrderQuantityInBaseUnit:           scheduleLineOrderQuantity,
-				OpenConfirmedQuantityInBaseUnit:   scheduleLineCommittedQuantity,
-			})
-		}
-	}
-
-	return &res, nil
-}
-
-// Address
-func (psdc *SDC) ConvertToMappingAddress(sdc *dpfm_api_input_reader.SDC) (*MappingAddress, error) {
-	dataHeader := sdc.SAPPurchaseOrderHeader
-
-	res := MappingAddress{
-		PurchaseOrder: dataHeader.PurchaseOrder,
-		PostalCode:    dataHeader.AddressPostalCode,
-		LocalRegion:   dataHeader.AddressRegion,
-		Country:       dataHeader.AddressCountry,
-		StreetName:    dataHeader.AddressStreetName,
-		CityName:      dataHeader.AddressCityName,
-	}
-
-	return &res, nil
-}
-
-// Partner
-// 「ビジネスパートナのデフォルト値がセットされる」の対応が必要 ↓
-func (psdc *SDC) ConvertToMappingPartner(sdc *dpfm_api_input_reader.SDC) (*[]MappingPartner, error) {
-	var res []MappingPartner
-	dataHeader := sdc.SAPPurchaseOrderHeader
-	dataItem := sdc.SAPPurchaseOrderHeader.SAPPurchaseOrderItem
-
-	for _, dataItem := range dataItem {
-		dataItemAccount := dataItem.SAPPurchaseOrderItemAccount
-		for _, dataItemAccount := range dataItemAccount {
-			res = append(res, MappingPartner{
-				PurchaseOrder:      dataHeader.PurchaseOrder,
-				ExternalDocumentID: dataItemAccount.SalesOrder,
-			})
-		}
-	}
-
-	return &res, nil
-}
-
-// 番号処理
-func (psdc *SDC) ConvertToCodeConversionKey(sdc *dpfm_api_input_reader.SDC, labelConvertFrom, labelConvertTo string, codeConvertFrom any) *CodeConversionKey {
-	pm := &requests.CodeConversionKey{
-		SystemConvertTo:   "DPFM",
-		SystemConvertFrom: "SAP",
-		BusinessPartner:   *sdc.BusinessPartnerID,
-	}
-
-	pm.LabelConvertFrom = labelConvertFrom
-	pm.LabelConvertTo = labelConvertTo
-
-	switch codeConvertFrom := codeConvertFrom.(type) {
-	case string:
-		pm.CodeConvertFrom = codeConvertFrom
-	case int:
-		pm.CodeConvertFrom = strconv.FormatInt(int64(codeConvertFrom), 10)
-	case float32:
-		pm.CodeConvertFrom = strconv.FormatFloat(float64(codeConvertFrom), 'f', -1, 32)
-	case bool:
-		pm.CodeConvertFrom = strconv.FormatBool(codeConvertFrom)
-	case *string:
-		if codeConvertFrom != nil {
-			pm.CodeConvertFrom = *codeConvertFrom
-		}
-	case *int:
-		if codeConvertFrom != nil {
-			pm.CodeConvertFrom = strconv.FormatInt(int64(*codeConvertFrom), 10)
-		}
-	case *float32:
-		if codeConvertFrom != nil {
-			pm.CodeConvertFrom = strconv.FormatFloat(float64(*codeConvertFrom), 'f', -1, 32)
-		}
-	case *bool:
-		if codeConvertFrom != nil {
-			pm.CodeConvertFrom = strconv.FormatBool(*codeConvertFrom)
-		}
-	}
-
-	data := pm
-	res := CodeConversionKey{
-		SystemConvertTo:   data.SystemConvertTo,
-		SystemConvertFrom: data.SystemConvertFrom,
-		LabelConvertTo:    data.LabelConvertTo,
-		LabelConvertFrom:  data.LabelConvertFrom,
-		CodeConvertFrom:   data.CodeConvertFrom,
-		BusinessPartner:   data.BusinessPartner,
-	}
-
-	return &res
-}
-
-func (psdc *SDC) ConvertToCodeConversionQueryGets(rows *sql.Rows) (*[]CodeConversionQueryGets, error) {
-	var res []CodeConversionQueryGets
-
-	for i := 0; true; i++ {
-		pm := &requests.CodeConversionQueryGets{}
-		if !rows.Next() {
-			if i == 0 {
-				return nil, fmt.Errorf("'data_platform_code_conversion_code_conversion_data'テーブルに対象のレコードが存在しません。")
-			} else {
-				break
-			}
-		}
-		err := rows.Scan(
-			&pm.CodeConversionID,
-			&pm.SystemConvertTo,
-			&pm.SystemConvertFrom,
-			&pm.LabelConvertTo,
-			&pm.LabelConvertFrom,
-			&pm.CodeConvertFrom,
-			&pm.CodeConvertTo,
-			&pm.BusinessPartner,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		data := pm
-		res = append(res, CodeConversionQueryGets{
-			CodeConversionID:  data.CodeConversionID,
-			SystemConvertTo:   data.SystemConvertTo,
-			SystemConvertFrom: data.SystemConvertFrom,
-			LabelConvertTo:    data.LabelConvertTo,
-			LabelConvertFrom:  data.LabelConvertFrom,
-			CodeConvertFrom:   data.CodeConvertFrom,
-			CodeConvertTo:     data.CodeConvertTo,
-			BusinessPartner:   data.BusinessPartner,
-		})
-	}
-
-	return &res, nil
-}
-
-func (psdc *SDC) ConvertToCodeConversionHeader(dataQueryGets *[]CodeConversionQueryGets) (*CodeConversionHeader, error) {
+func (p *ProcessingFormatter) ProcessingFormatter(
+	sdc *dpfm_api_input_reader.SDC,
+	psdc *ProcessingFormatterSDC,
+) error {
 	var err error
+	var e error
 
-	dataMap := make(map[string]CodeConversionQueryGets, len(*dataQueryGets))
-	for _, v := range *dataQueryGets {
-		dataMap[v.LabelConvertTo] = v
-	}
+	wg := sync.WaitGroup{}
 
-	pm := &requests.CodeConversionHeader{}
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
 
-	pm.PurchaseOrder = dataMap["OrderID"].CodeConvertFrom
-	pm.OrderID, err = ParseInt(dataMap["OrderID"].CodeConvertTo)
+		psdc.Header, e = p.Header(sdc, psdc)
+		if e != nil {
+			err = e
+			return
+		}
+		psdc.ConversionProcessingHeader, e = p.ConversionProcessingHeader(sdc, psdc)
+		if e != nil {
+			err = e
+			return
+		}
+
+	}(&wg)
+
+	wg.Wait()
 	if err != nil {
-		return nil, err
-	}
-	pm.OrderType = GetStringPtr(dataMap["OrderType"].CodeConvertTo)
-	pm.Supplier = GetStringPtr(dataMap["Seller"].CodeConvertFrom)
-	pm.Seller, err = ParseIntPtr(GetStringPtr(dataMap["Seller"].CodeConvertTo))
-	if err != nil {
-		return nil, err
+		return err
 	}
 
-	data := pm
-	res := CodeConversionHeader{
-		PurchaseOrder: data.PurchaseOrder,
-		OrderID:       data.OrderID,
-		OrderType:     data.OrderType,
-		Supplier:      data.Supplier,
-		Seller:        data.Seller,
+	p.l.Info(psdc)
+
+	return nil
+}
+
+func (p *ProcessingFormatter) Header(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) (*Header, error) {
+	data := sdc.Header
+	dataHeaderItem := sdc.Header.Item[0]
+	dataHeaderItemPricingElement := dataHeaderItem.ItemPricingElement[0]
+
+	systemDate := getSystemDatePtr()
+
+	priceDetnExchangeRate, err := parseFloat32Ptr(dataHeaderItemPricingElement.PriceDetnExchangeRate)
+	if err != nil {
+		return nil, xerrors.Errorf("Parse Error: %w", err)
+	}
+	accountingExchangeRate, err := parseFloat32Ptr(data.ExchangeRate)
+	if err != nil {
+		return nil, xerrors.Errorf("Parse Error: %w", err)
+	}
+
+	res := Header{
+		ConvertingOrderID:         data.PurchaseOrder,
+		OrderDate:                 data.PurchaseOrderDate,
+		ConvertingOrderType:       data.PurchaseOrderType,
+		Buyer:                     sdc.BusinessPartnerID,
+		ConvertingSeller:          data.Supplier,
+		BillToParty:               sdc.BusinessPartnerID,
+		BillToCountry:             data.AddressCountry,
+		Payer:                     sdc.BusinessPartnerID,
+		CreationDate:              systemDate,
+		LastChangeDate:            systemDate,
+		OrderValidityStartDate:    data.ValidityStartDate,
+		OrderValidityEndDate:      data.ValidityEndDate,
+		TransactionCurrency:       data.DocumentCurrency,
+		PricingDate:               dataHeaderItemPricingElement.PricingDateTime,
+		PriceDetnExchangeRate:     priceDetnExchangeRate,
+		Incoterms:                 data.IncotermsClassification,
+		PaymentTerms:              data.PaymentTerms,
+		AccountingExchangeRate:    accountingExchangeRate,
+		HeaderBlockStatus:         getBoolPtr(false),
+		HeaderBillingBlockStatus:  getBoolPtr(false),
+		HeaderDeliveryBlockStatus: getBoolPtr(false),
+		IsCancelled:               getBoolPtr(false),
+		IsDeleted:                 getBoolPtr(false),
 	}
 
 	return &res, nil
 }
 
-func (psdc *SDC) ConvertToCodeConversionItem(dataQueryGets *[]CodeConversionQueryGets) (*CodeConversionItem, error) {
-	var err error
+func (p *ProcessingFormatter) ConversionProcessingHeader(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) (*ConversionProcessingHeader, error) {
+	dataKey := make([]*ConversionProcessingKey, 0)
 
-	dataMap := make(map[string]CodeConversionQueryGets, len(*dataQueryGets))
-	for _, v := range *dataQueryGets {
-		dataMap[v.LabelConvertTo] = v
-	}
+	dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "PurchaseOrder", "OrderID", psdc.Header.ConvertingOrderID))
+	dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "PurchaseOrderType", "OrderType", psdc.Header.ConvertingOrderType))
+	dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "Supplier", "Seller", psdc.Header.ConvertingSeller))
 
-	pm := &requests.CodeConversionItem{}
-
-	pm.PurchaseOrderItem = dataMap["OrderItem"].CodeConvertFrom
-	pm.OrderItem, err = ParseInt(dataMap["OrderItem"].CodeConvertTo)
+	dataQueryGets, err := p.ConversionProcessingCommonQueryGets(dataKey)
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("ConversionProcessing Error: %w", err)
 	}
-	pm.OrderItemCategory = GetStringPtr(dataMap["OrderItemCategory"].CodeConvertTo)
-	pm.Material = dataMap["Product"].CodeConvertFrom
-	pm.Product = GetStringPtr(dataMap["Product"].CodeConvertTo)
-	pm.ProductGroup = GetStringPtr(dataMap["ProductGroup"].CodeConvertTo)
+
+	data, err := p.ConvertToConversionProcessingHeader(dataKey, dataQueryGets)
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("ConvertToConversionProcessing Error: %w", err)
 	}
 
-	data := pm
-	res := CodeConversionItem{
-		PurchaseOrderItem: data.PurchaseOrderItem,
-		OrderItem:         data.OrderItem,
-		OrderItemCategory: data.OrderItemCategory,
-		Material:          data.Material,
-		Product:           data.Product,
-		ProductGroup:      data.ProductGroup,
-	}
-
-	return &res, nil
+	return data, nil
 }
 
-func (psdc *SDC) ConvertToConversionData() *[]ConversionData {
-	var res []ConversionData
-
-	for _, v := range *psdc.CodeConversionItem {
-		pm := &requests.ConversionData{}
-
-		pm.PurchaseOrder = psdc.CodeConversionHeader.PurchaseOrder
-		pm.OrderID = psdc.CodeConversionHeader.OrderID
-		pm.PurchaseOrderItem = v.PurchaseOrderItem
-		pm.OrderItem = v.OrderItem
-		pm.Supplier = psdc.CodeConversionHeader.Supplier
-		pm.Seller = *psdc.CodeConversionHeader.Seller
-		pm.Material = v.Material
-		pm.Product = v.Product
-
-		data := pm
-		res = append(res, ConversionData{
-			PurchaseOrder:     data.PurchaseOrder,
-			OrderID:           data.OrderID,
-			PurchaseOrderItem: data.PurchaseOrderItem,
-			OrderItem:         data.OrderItem,
-			Supplier:          data.Supplier,
-			Seller:            data.Seller,
-			Material:          data.Material,
-			Product:           data.Product,
-		})
+func (psdc *ProcessingFormatter) ConvertToConversionProcessingHeader(conversionProcessingKey []*ConversionProcessingKey, conversionProcessingCommonQueryGets []*ConversionProcessingCommonQueryGets) (*ConversionProcessingHeader, error) {
+	data := make(map[string]*ConversionProcessingCommonQueryGets, len(conversionProcessingCommonQueryGets))
+	for _, v := range conversionProcessingCommonQueryGets {
+		data[v.LabelConvertTo] = v
 	}
 
-	return &res
+	for _, v := range conversionProcessingKey {
+		if _, ok := data[v.LabelConvertTo]; !ok {
+			return nil, xerrors.Errorf("%s is not in the database", v.LabelConvertTo)
+		}
+	}
+
+	pm := &requests.ConversionProcessingHeader{}
+
+	pm.ConvertingOrderID = data["OrderID"].CodeConvertFromString
+	pm.ConvertedOrderID = data["OrderID"].CodeConvertToInt
+	pm.ConvertingOrderType = data["OrderType"].CodeConvertFromString
+	pm.ConvertedOrderType = data["OrderType"].CodeConvertFromString
+	pm.ConvertingSeller = data["Seller"].CodeConvertFromString
+	pm.ConvertedSeller = data["Seller"].CodeConvertToInt
+
+	res := &ConversionProcessingHeader{
+		ConvertingOrderID:   pm.ConvertingOrderID,
+		ConvertedOrderID:    pm.ConvertedOrderID,
+		ConvertingOrderType: pm.ConvertingOrderType,
+		ConvertedOrderType:  pm.ConvertedOrderType,
+		ConvertingSeller:    pm.ConvertingSeller,
+		ConvertedSeller:     pm.ConvertedSeller,
+	}
+
+	return res, nil
 }
 
-func (psdc *SDC) ConvertToCodeConversionItemPricingElement(dataQueryGets *[]CodeConversionQueryGets) (*CodeConversionItemPricingElement, error) {
-	var err error
+// func (p *ProcessingFormatter) Item(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*Item, error) {
+// 	res := make([]*Item, 0)
+// 	dataHeader := psdc.Header
+// 	dataPreparingHeaderPartner := psdc.PreparingHeaderPartner
+// 	data := sdc.Header.Item
 
-	dataMap := make(map[string]CodeConversionQueryGets, len(*dataQueryGets))
-	for _, v := range *dataQueryGets {
-		dataMap[v.LabelConvertTo] = v
-	}
+// 	systemDate := getSystemDatePtr()
 
-	pm := &requests.CodeConversionItemPricingElement{}
+// 	for _, data := range data {
+// 		requestedQuantity, err := parseFloat32Ptr(data.RequestedQuantity)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		confdDelivQtyInOrderQtyUnit, err := parseFloat32Ptr(data.ConfdDelivQtyInOrderQtyUnit)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		itemGrossWeight, err := parseFloat32Ptr(data.ItemGrossWeight)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		itemNetWeight, err := parseFloat32Ptr(data.ItemNetWeight)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		netAmount, err := parseFloat32Ptr(data.NetAmount)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		taxAmount, err := parseFloat32Ptr(data.TaxAmount)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		grossAmount, err := parseFloat32Ptr(data.GrossAmount)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-	pm.PricingProcedureCounter, err = ParseIntPtr(GetStringPtr(dataMap["PricingProcedureCounter"].CodeConvertTo))
-	if err != nil {
-		return nil, err
-	}
+// 		res = append(res, &Item{
+// 			ConvertingOrderID:                       dataHeader.ConvertingOrderID,
+// 			ConvertingOrderItem:                     data.SalesOrderItem,
+// 			ConvertingOrderItemCategory:             data.SalesOrderItemCategory,
+// 			OrderItemTextBySeller:                   data.SalesOrderItemText,
+// 			ConvertingProduct:                       data.Material,
+// 			ConvertingProductGroup:                  data.MaterialGroup,
+// 			BaseUnit:                                data.RequestedQuantityUnit,
+// 			PricingDate:                             data.PricingDate,
+// 			PriceDetnExchangeRate:                   dataHeader.PriceDetnExchangeRate,
+// 			RequestedDeliveryDate:                   dataHeader.RequestedDeliveryDate,
+// 			ConvertingDeliverToParty:                dataPreparingHeaderPartner.ConvertingDeliverToParty,
+// 			DeliverFromParty:                        sdc.BusinessPartnerID,
+// 			CreationDate:                            systemDate,
+// 			LastChangeDate:                          systemDate,
+// 			DeliverFromPlant:                        data.ShippingPoint,
+// 			DeliverFromPlantStorageLocation:         data.StorageLocation,
+// 			DeliveryUnit:                            data.OrderQuantityUnit,
+// 			StockConfirmationBusinessPartner:        sdc.BusinessPartnerID,
+// 			StockConfirmationPlant:                  data.ProductionPlant,
+// 			StockConfirmationPlantBatch:             data.Batch,
+// 			OrderQuantityInDeliveryUnit:             requestedQuantity,
+// 			ConfirmedOrderQuantityInBaseUnit:        confdDelivQtyInOrderQtyUnit,
+// 			ItemWeightUnit:                          data.ItemWeightUnit,
+// 			ItemGrossWeight:                         itemGrossWeight,
+// 			ItemNetWeight:                           itemNetWeight,
+// 			NetAmount:                               netAmount,
+// 			TaxAmount:                               taxAmount,
+// 			GrossAmount:                             grossAmount,
+// 			InvoiceDocumentDate:                     data.BillingDocumentDate,
+// 			ProductionPlantBusinessPartner:          sdc.BusinessPartnerID,
+// 			ProductionPlant:                         data.ProductionPlant,
+// 			Incoterms:                               data.IncotermsClassification,
+// 			TransactionTaxClassification:            dataHeader.ConvertingCustomerTaxClassification1,
+// 			ProductTaxClassificationBillToCountry:   data.ProductTaxClassification1,
+// 			ProductTaxClassificationBillFromCountry: data.ProductTaxClassification1,
+// 			AccountAssignmentGroup:                  dataHeader.ConvertingAccountAssignmentGroup,
+// 			ProductAccountAssignmentGroup:           data.MatlAccountAssignmentGroup,
+// 			PaymentTerms:                            data.CustomerPaymentTerms,
+// 			TaxCode:                                 data.TaxCode,
+// 			ItemBlockStatus:                         getBoolPtr(false),
+// 			ItemDeliveryBlockStatus:                 getBoolPtr(false),
+// 			ItemBillingBlockStatus:                  getBoolPtr(false),
+// 			IsCancelled:                             getBoolPtr(false),
+// 			IsDeleted:                               getBoolPtr(false),
+// 		})
+// 	}
 
-	data := pm
-	res := CodeConversionItemPricingElement{
-		PricingProcedureCounter: data.PricingProcedureCounter,
-	}
+// 	return res, nil
+// }
 
-	return &res, nil
-}
+// func (p *ProcessingFormatter) ConversionProcessingItem(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ConversionProcessingItem, error) {
+// 	data := make([]*ConversionProcessingItem, 0)
 
-func (psdc *SDC) ConvertToCodeConversionItemScheduleLine(dataQueryGets *[]CodeConversionQueryGets) (*CodeConversionItemScheduleLine, error) {
-	var err error
+// 	for _, item := range psdc.Item {
+// 		dataKey := make([]*ConversionProcessingKey, 0)
 
-	dataMap := make(map[string]CodeConversionQueryGets, len(*dataQueryGets))
-	for _, v := range *dataQueryGets {
-		dataMap[v.LabelConvertTo] = v
-	}
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "SalesOrderItem", "OrderItem", item.ConvertingOrderItem))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "SalesOrderItemCategory", "OrderItemCategory", item.ConvertingOrderItemCategory))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "Material", "Product", item.ConvertingProduct))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "MaterialGroup", "ProductGroup", item.ConvertingProductGroup))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "Customer", "DeliverToParty", item.ConvertingDeliverToParty))
 
-	pm := &requests.CodeConversionItemScheduleLine{}
+// 		dataQueryGets, err := p.ConversionProcessingCommonQueryGets(dataKey)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConversionProcessing Error: %w", err)
+// 		}
 
-	pm.ScheduleLine, err = ParseInt(dataMap["ScheduleLine"].CodeConvertTo)
-	if err != nil {
-		return nil, err
-	}
+// 		datum, err := p.ConvertToConversionProcessingItem(dataKey, dataQueryGets)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConvertToConversionProcessing Error: %w", err)
+// 		}
 
-	data := pm
-	res := CodeConversionItemScheduleLine{
-		ScheduleLine: data.ScheduleLine,
-	}
+// 		data = append(data, datum)
+// 	}
 
-	return &res, nil
-}
+// 	return data, nil
+// }
 
-// 個別処理
-func (psdc *SDC) ConvertToTotalNetAmount(totalNetAmount *float32) *TotalNetAmount {
-	pm := &requests.TotalNetAmount{}
+// func (p *ProcessingFormatter) ConvertToConversionProcessingItem(conversionProcessingKey []*ConversionProcessingKey, conversionProcessingCommonQueryGets []*ConversionProcessingCommonQueryGets) (*ConversionProcessingItem, error) {
+// 	data := make(map[string]*ConversionProcessingCommonQueryGets, len(conversionProcessingCommonQueryGets))
+// 	for _, v := range conversionProcessingCommonQueryGets {
+// 		data[v.LabelConvertTo] = v
+// 	}
 
-	pm.TotalNetAmount = totalNetAmount
+// 	for _, v := range conversionProcessingKey {
+// 		if _, ok := data[v.LabelConvertTo]; !ok {
+// 			return nil, xerrors.Errorf("%s is not in the database", v.LabelConvertTo)
+// 		}
+// 	}
 
-	data := pm
-	res := TotalNetAmount{
-		TotalNetAmount: data.TotalNetAmount,
-	}
+// 	pm := &requests.ConversionProcessingItem{}
 
-	return &res
-}
+// 	pm.ConvertingOrderItem = data["OrderItem"].CodeConvertFromString
+// 	pm.ConvertedOrderItem = data["OrderItem"].CodeConvertToInt
+// 	pm.ConvertingOrderItemCategory = data["OrderItemCategory"].CodeConvertFromString
+// 	pm.ConvertedOrderItemCategory = data["OrderItemCategory"].CodeConvertFromString
+// 	pm.ConvertingProduct = data["Product"].CodeConvertFromString
+// 	pm.ConvertedProduct = data["Product"].CodeConvertFromString
+// 	pm.ConvertingProductGroup = data["ProductGroup"].CodeConvertFromString
+// 	pm.ConvertedProductGroup = data["ProductGroup"].CodeConvertFromString
+// 	pm.ConvertingDeliverToParty = data["DeliverToParty"].CodeConvertFromString
+// 	pm.ConvertedDeliverToParty = data["DeliverToParty"].CodeConvertToInt
 
-func (psdc *SDC) ConvertToSetConditionType(conditionType *string) *SetConditionType {
-	pm := &requests.SetConditionType{}
+// 	res := &ConversionProcessingItem{
+// 		ConvertingOrderItem:         pm.ConvertingOrderItem,
+// 		ConvertedOrderItem:          pm.ConvertedOrderItem,
+// 		ConvertingOrderItemCategory: pm.ConvertingOrderItemCategory,
+// 		ConvertedOrderItemCategory:  pm.ConvertedOrderItemCategory,
+// 		ConvertingProduct:           pm.ConvertingProduct,
+// 		ConvertedProduct:            pm.ConvertedProduct,
+// 		ConvertingProductGroup:      pm.ConvertingProductGroup,
+// 		ConvertedProductGroup:       pm.ConvertedProductGroup,
+// 		ConvertingDeliverToParty:    pm.ConvertingDeliverToParty,
+// 		ConvertedDeliverToParty:     pm.ConvertedDeliverToParty,
+// 	}
 
-	pm.ConditionType = conditionType
+// 	return res, nil
+// }
 
-	data := pm
-	res := SetConditionType{
-		ConditionType: data.ConditionType,
-	}
+// func (p *ProcessingFormatter) ItemPricingElement(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ItemPricingElement, error) {
+// 	res := make([]*ItemPricingElement, 0)
+// 	dataHeader := psdc.Header
+// 	dataItem := psdc.Item
 
-	return &res
-}
+// 	for i, dataItem := range dataItem {
+// 		data := sdc.Header.Item[i].ItemPricingElement
+// 		for _, data := range data {
+// 			conditionRateValue, err := parseFloat32Ptr(data.ConditionRateValue)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			conditionQuantity, err := parseFloat32Ptr(data.ConditionQuantity)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			conditionAmount, err := parseFloat32Ptr(data.ConditionAmount)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+
+// 			res = append(res, &ItemPricingElement{
+// 				ConvertingOrderID:                   dataHeader.ConvertingOrderID,
+// 				ConvertingOrderItem:                 dataItem.ConvertingOrderItem,
+// 				ConvertingBuyer:                     dataHeader.ConvertingBuyer,
+// 				Seller:                              sdc.BusinessPartnerID,
+// 				ConvertingConditionRecord:           data.ConditionRecord,
+// 				ConvertingConditionSequentialNumber: data.ConditionSequentialNumber,
+// 				PricingDate:                         dataItem.PricingDate,
+// 				ConditionRateValue:                  conditionRateValue,
+// 				ConditionCurrency:                   data.ConditionCurrency,
+// 				ConditionQuantity:                   conditionQuantity,
+// 				ConditionQuantityUnit:               data.ConditionQuantityUnit,
+// 				TaxCode:                             data.TaxCode,
+// 				ConditionAmount:                     conditionAmount,
+// 				TransactionCurrency:                 data.TransactionCurrency,
+// 				ConditionIsManuallyChanged:          getBoolPtr(true),
+// 			})
+// 		}
+// 	}
+
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) ConversionProcessingItemPricingElement(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ConversionProcessingItemPricingElement, error) {
+// 	data := make([]*ConversionProcessingItemPricingElement, 0)
+
+// 	for _, itemPricingElement := range psdc.ItemPricingElement {
+// 		dataKey := make([]*ConversionProcessingKey, 0)
+
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "ConditionRecord", "ConditionRecord", itemPricingElement.ConvertingConditionRecord))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "ConditionSequentialNumber", "ConditionSequentialNumber", itemPricingElement.ConvertingConditionSequentialNumber))
+
+// 		dataQueryGets, err := p.ConversionProcessingCommonQueryGets(dataKey)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConversionProcessing Error: %w", err)
+// 		}
+
+// 		datum, err := p.ConvertToConversionProcessingItemPricingElement(dataKey, dataQueryGets)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConvertToConversionProcessing Error: %w", err)
+// 		}
+
+// 		data = append(data, datum)
+// 	}
+
+// 	return data, nil
+// }
+
+// func (p *ProcessingFormatter) ConvertToConversionProcessingItemPricingElement(conversionProcessingKey []*ConversionProcessingKey, conversionProcessingCommonQueryGets []*ConversionProcessingCommonQueryGets) (*ConversionProcessingItemPricingElement, error) {
+// 	data := make(map[string]*ConversionProcessingCommonQueryGets, len(conversionProcessingCommonQueryGets))
+// 	for _, v := range conversionProcessingCommonQueryGets {
+// 		data[v.LabelConvertTo] = v
+// 	}
+
+// 	for _, v := range conversionProcessingKey {
+// 		if _, ok := data[v.LabelConvertTo]; !ok {
+// 			return nil, xerrors.Errorf("%s is not in the database", v.LabelConvertTo)
+// 		}
+// 	}
+
+// 	pm := &requests.ConversionProcessingItemPricingElement{}
+
+// 	pm.ConvertingConditionRecord = data["ConditionRecord"].CodeConvertFromString
+// 	pm.ConvertedConditionRecord = data["ConditionRecord"].CodeConvertToInt
+// 	pm.ConvertingConditionSequentialNumber = data["ConditionSequentialNumber"].CodeConvertFromString
+// 	pm.ConvertedConditionSequentialNumber = data["ConditionSequentialNumber"].CodeConvertToInt
+
+// 	res := &ConversionProcessingItemPricingElement{
+// 		ConvertingConditionRecord:           pm.ConvertingConditionRecord,
+// 		ConvertedConditionRecord:            pm.ConvertedConditionRecord,
+// 		ConvertingConditionSequentialNumber: pm.ConvertingConditionSequentialNumber,
+// 		ConvertedConditionSequentialNumber:  pm.ConvertedConditionSequentialNumber,
+// 	}
+
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) ItemScheduleLine(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ItemScheduleLine, error) {
+// 	res := make([]*ItemScheduleLine, 0)
+// 	dataHeader := psdc.Header
+// 	dataItem := psdc.Item
+
+// 	for i, dataItem := range dataItem {
+// 		data := sdc.Header.Item[i].ItemScheduleLine
+// 		for _, data := range data {
+// 			scheduleLineOrderQuantity, err := parseFloat32Ptr(data.ScheduleLineOrderQuantity)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			confdOrderQtyByMatlAvailCheck, err := parseFloat32Ptr(data.ConfdOrderQtyByMatlAvailCheck)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			deliveredQtyInOrderQtyUnit, err := parseFloat32Ptr(data.DeliveredQtyInOrderQtyUnit)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			openConfdDelivQtyInOrdQtyUnit, err := parseFloat32Ptr(data.OpenConfdDelivQtyInOrdQtyUnit)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+
+// 			res = append(res, &ItemScheduleLine{
+// 				ConvertingOrderID:                     dataHeader.ConvertingOrderID,
+// 				ConvertingOrderItem:                   dataItem.ConvertingOrderItem,
+// 				ConvertingScheduleLine:                data.ScheduleLine,
+// 				Product:                               dataItem.ConvertingProduct,
+// 				StockConfirmationBussinessPartner:     sdc.BusinessPartnerID,
+// 				StockConfirmationPlant:                dataItem.ProductionPlant,
+// 				StockConfirmationPlantBatch:           dataItem.StockConfirmationPlantBatch,
+// 				RequestedDeliveryDate:                 data.RequestedDeliveryDate,
+// 				ConfirmedDeliveryDate:                 data.ConfirmedDeliveryDate,
+// 				OrderQuantityInBaseUnit:               scheduleLineOrderQuantity,
+// 				ConfirmedOrderQuantityByPDTAvailCheck: confdOrderQtyByMatlAvailCheck,
+// 				DeliveredQuantityInBaseUnit:           deliveredQtyInOrderQtyUnit,
+// 				OpenConfirmedQuantityInBaseUnit:       openConfdDelivQtyInOrdQtyUnit,
+// 			})
+// 		}
+// 	}
+
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) ConversionProcessingItemScheduleLine(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ConversionProcessingItemScheduleLine, error) {
+// 	data := make([]*ConversionProcessingItemScheduleLine, 0)
+
+// 	for _, itemScheduleLine := range psdc.ItemScheduleLine {
+// 		dataKey := make([]*ConversionProcessingKey, 0)
+
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "ScheduleLine", "ScheduleLine", itemScheduleLine.ConvertingScheduleLine))
+
+// 		dataQueryGets, err := p.ConversionProcessingCommonQueryGets(dataKey)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConversionProcessing Error: %w", err)
+// 		}
+
+// 		datum, err := p.ConvertToConversionProcessingItemScheduleLine(dataKey, dataQueryGets)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConvertToConversionProcessing Error: %w", err)
+// 		}
+
+// 		data = append(data, datum)
+// 	}
+
+// 	return data, nil
+// }
+
+// func (psdc *ProcessingFormatter) ConvertToConversionProcessingItemScheduleLine(conversionProcessingKey []*ConversionProcessingKey, conversionProcessingCommonQueryGets []*ConversionProcessingCommonQueryGets) (*ConversionProcessingItemScheduleLine, error) {
+// 	data := make(map[string]*ConversionProcessingCommonQueryGets, len(conversionProcessingCommonQueryGets))
+// 	for _, v := range conversionProcessingCommonQueryGets {
+// 		data[v.LabelConvertTo] = v
+// 	}
+
+// 	for _, v := range conversionProcessingKey {
+// 		if _, ok := data[v.LabelConvertTo]; !ok {
+// 			return nil, xerrors.Errorf("%s is not in the database", v.LabelConvertTo)
+// 		}
+// 	}
+
+// 	pm := &requests.ConversionProcessingItemScheduleLine{}
+
+// 	pm.ConvertingScheduleLine = data["ScheduleLine"].CodeConvertFromString
+// 	pm.ConvertedScheduleLine = data["ScheduleLine"].CodeConvertToInt
+
+// 	res := &ConversionProcessingItemScheduleLine{
+// 		ConvertingScheduleLine: pm.ConvertingScheduleLine,
+// 		ConvertedScheduleLine:  pm.ConvertedScheduleLine,
+// 	}
+
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) Address(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*Address, error) {
+// 	res := make([]*Address, 0)
+// 	dataHeader := psdc.Header
+
+// 	res = append(res, &Address{
+// 		ConvertingOrderID: dataHeader.ConvertingOrderID,
+// 	})
+
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) Partner(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*Partner, error) {
+// 	res := make([]*Partner, 0)
+// 	dataHeader := psdc.Header
+// 	dataPreparingHeaderPartner := psdc.PreparingHeaderPartner
+
+// 	for _, convertingPartnerFunction := range dataPreparingHeaderPartner.ConvertingPartnerFunction {
+// 		res = append(res, &Partner{
+// 			ConvertingOrderID:         dataHeader.ConvertingOrderID,
+// 			ConvertingPartnerFunction: convertingPartnerFunction,
+// 			ConvertingBusinessPartner: dataPreparingHeaderPartner.ConvertingCustomer,
+// 			ExternalDocumentID:        dataHeader.ConvertingExternalDocumentID,
+// 		})
+// 	}
+// 	return res, nil
+// }
+
+// func (p *ProcessingFormatter) ConversionProcessingPartner(sdc *dpfm_api_input_reader.SDC, psdc *ProcessingFormatterSDC) ([]*ConversionProcessingPartner, error) {
+// 	data := make([]*ConversionProcessingPartner, 0)
+
+// 	for _, partner := range psdc.Partner {
+// 		dataKey := make([]*ConversionProcessingKey, 0)
+
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "PartnerFunction", "PartnerFunction", partner.ConvertingPartnerFunction))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "Customer", "BusinessPartner", partner.ConvertingBusinessPartner))
+// 		dataKey = append(dataKey, p.ConversionProcessingKey(sdc, "Supplier", "BusinessPartner", partner.ConvertingBusinessPartner))
+
+// 		dataQueryGets, err := p.ConversionProcessingCommonQueryGets(dataKey)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConversionProcessing Error: %w", err)
+// 		}
+
+// 		datum, err := p.ConvertToConversionProcessingPartner(dataKey, dataQueryGets)
+// 		if err != nil {
+// 			return nil, xerrors.Errorf("ConvertToConversionProcessing Error: %w", err)
+// 		}
+
+// 		data = append(data, datum)
+// 	}
+
+// 	return data, nil
+// }
+
+// func (p *ProcessingFormatter) ConvertToConversionProcessingPartner(conversionProcessingKey []*ConversionProcessingKey, conversionProcessingCommonQueryGets []*ConversionProcessingCommonQueryGets) (*ConversionProcessingPartner, error) {
+// 	data := make(map[string]*ConversionProcessingCommonQueryGets, len(conversionProcessingCommonQueryGets))
+// 	for _, v := range conversionProcessingCommonQueryGets {
+// 		data[v.LabelConvertTo] = v
+// 	}
+
+// 	for _, v := range conversionProcessingKey {
+// 		if _, ok := data[v.LabelConvertTo]; !ok {
+// 			return nil, xerrors.Errorf("%s is not in the database", v.LabelConvertTo)
+// 		}
+// 	}
+
+// 	pm := &requests.ConversionProcessingPartner{}
+
+// 	pm.ConvertingPartnerFunction = data["PartnerFunction"].CodeConvertFromString
+// 	pm.ConvertedPartnerFunction = data["PartnerFunction"].CodeConvertToString
+// 	pm.ConvertingBusinessPartner = data["BusinessPartner"].CodeConvertFromString
+// 	pm.ConvertedBusinessPartner = data["BusinessPartner"].CodeConvertToInt
+
+// 	res := &ConversionProcessingPartner{
+// 		ConvertingPartnerFunction: pm.ConvertingPartnerFunction,
+// 		ConvertedPartnerFunction:  pm.ConvertedPartnerFunction,
+// 		ConvertingBusinessPartner: pm.ConvertingBusinessPartner,
+// 		ConvertedBusinessPartner:  pm.ConvertedBusinessPartner,
+// 	}
+
+// 	return res, nil
+// }
